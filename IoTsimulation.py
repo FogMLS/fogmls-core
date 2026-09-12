@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import time
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 os.environ["TF_XLA_FLAGS"] = "--tf_xla_enable_xla_devices=false"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
@@ -10,7 +11,7 @@ random.seed(RANDOM_SEED)
 np.random.seed(RANDOM_SEED)
 
 from config import (
-    AI_RM, ALPHA, BETA, DEFAULT_RM, DEVICE_TO_CLASS, DAGGER_RM,
+    AI_RM, ALPHA, BETA, DEFAULT_RM, DEVICE_TO_CLASS, DAGGER_RM, RF_RM, RF_BATCH_RM, RF_SMART_RM,
     FEATURES_PER_JOB, GA_RM,
     GAMMA, JOB_ATTRIBUTES, MAX_JOBS, MAX_RS,
     MAX_SIMULATION_TIME, NUM_FOG_NODES,
@@ -126,6 +127,7 @@ print('SLOT DURATION: ' + str(SLOT_TIME))
 print("Simulation Started")
 
 sl_no = 0
+ga_slot_times = []  # timing measurement, safe to ignore/remove after use
 sim_time = 0.
 
 # Write dataset header.
@@ -170,6 +172,14 @@ if RM_TYPE == AI_RM or RM_TYPE == DAGGER_RM:
 else:
     model = None
     scaler = None
+
+if RM_TYPE == RF_RM or RM_TYPE == RF_BATCH_RM or RM_TYPE == RF_SMART_RM:
+    import joblib
+    rf_model = joblib.load('random_forest_model.joblib')
+    print('[SIM] Random Forest model loaded from random_forest_model.joblib')
+else:
+    rf_model = None
+
 if RM_TYPE != DEFAULT_RM:
     print('Alpha:' + str(ALPHA) +
           ', Beta:' + str(BETA) +
@@ -275,11 +285,159 @@ while MAX_SIMULATION_TIME > sim_time:
                        ','.join(str(val) for val in slot_labels))
                 logentry.writeToDataset(row + '\n')
 
+            case 7:
+                # Random Forest deployed as a live, real-time scheduler.
+                # RF was trained on TASK-LEVEL rows (6 base features +
+                # position index within the slot), so -- unlike the DL
+                # model -- no padding/reshaping into a slot-level vector
+                # is needed. Each task's live capacity is refreshed
+                # immediately before its own prediction, matching how
+                # the training data's capacity columns were generated
+                # (sequential, live, per-task).
+                n_jobs_this_slot = min(len(jobQ), MaxTasksInSlot)
+                rf_cap = [dev.get_Ex_capacity() for dev in ClusterRs]
+
+                for j in range(n_jobs_this_slot):
+                    row_features = [
+                        jobQ[j].get_type(),
+                        jobQ[j].get_noInstructions(),
+                        jobQ[j].get_dataBytes(),
+                        rf_cap[0], rf_cap[1], rf_cap[2],
+                        j,  # position within slot
+                    ]
+                    FR_ID = int(rf_model.predict([row_features])[0])
+
+                    if FR_ID == 0:
+                        clustrFogNode = getClusterFromID(
+                            jobQ[j].getDestinatinFogID())
+                        if clustrFogNode is not None:
+                            clustrFogNode.ExecutesJob(jobQ[j], sim_time, sl_no)
+                    elif FR_ID == 1:
+                        cs.ExecutesJob(jobQ[j], sim_time, sl_no)
+                    else:
+                        fog_idx = FR_ID - 2
+                        if 0 <= fog_idx < len(ClusterRs):
+                            ClusterRs[fog_idx].ExecutesJob(jobQ[j], sim_time, sl_no)
+                            swap_time = compute_swap_time(
+                                jobQ[j].get_noInstructions(),
+                                jobQ[j].get_dataBytes(),
+                                ClusterRs[fog_idx].getRAM())
+                            exec_duration = compute_exec_duration(
+                                jobQ[j].get_noInstructions(),
+                                ClusterRs[fog_idx].get_CPUSpeed(),
+                                swap_time)
+                            rf_cap[fog_idx] = max(0, rf_cap[fog_idx] - exec_duration)
+                        else:
+                            cs.ExecutesJob(jobQ[j], sim_time, sl_no)
+
+            case 8:
+                # Random Forest, BATCHED inference (all tasks in a slot
+                # predicted at once, using STALE start-of-slot capacity
+                # for every task). Faster (one predict() call per slot
+                # instead of up to 200), but methodologically incorrect
+                # -- built specifically to measure the real cost, in
+                # scheduling quality, of this shortcut, against RF_RM's
+                # correct-but-slower sequential version.
+                n_jobs_this_slot = min(len(jobQ), MaxTasksInSlot)
+                rf_cap_batch = [dev.get_Ex_capacity() for dev in ClusterRs]
+
+                batch_rows = []
+                for j in range(n_jobs_this_slot):
+                    batch_rows.append([
+                        jobQ[j].get_type(),
+                        jobQ[j].get_noInstructions(),
+                        jobQ[j].get_dataBytes(),
+                        rf_cap_batch[0], rf_cap_batch[1], rf_cap_batch[2],
+                        j,
+                    ])
+                batch_predictions = rf_model.predict(batch_rows)
+
+                for j in range(n_jobs_this_slot):
+                    FR_ID = int(batch_predictions[j])
+
+                    if FR_ID == 0:
+                        clustrFogNode = getClusterFromID(
+                            jobQ[j].getDestinatinFogID())
+                        if clustrFogNode is not None:
+                            clustrFogNode.ExecutesJob(jobQ[j], sim_time, sl_no)
+                    elif FR_ID == 1:
+                        cs.ExecutesJob(jobQ[j], sim_time, sl_no)
+                    else:
+                        fog_idx = FR_ID - 2
+                        if 0 <= fog_idx < len(ClusterRs):
+                            ClusterRs[fog_idx].ExecutesJob(jobQ[j], sim_time, sl_no)
+                        else:
+                            cs.ExecutesJob(jobQ[j], sim_time, sl_no)
+
+            case 9:
+                # Random Forest, CONFIDENCE-RANKED fallback -- an
+                # improvement over case 7 (plain argmax). Instead of
+                # committing unconditionally to RF's single top-choice
+                # prediction, this gets RF's FULL probability
+                # distribution over all classes, sorts candidates by
+                # confidence, and tries each in order, actually
+                # checking whether it fits the current live capacity
+                # before committing -- similar in spirit to how RR
+                # tries multiple nodes, but prioritized by RF's own
+                # confidence ranking rather than round-robin order.
+                # This targets the mechanism identified as RF_RM's
+                # weakness: committing to a single, possibly-wrong
+                # choice with no ability to reconsider.
+                n_jobs_this_slot = min(len(jobQ), MaxTasksInSlot)
+                rf_cap = [dev.get_Ex_capacity() for dev in ClusterRs]
+
+                for j in range(n_jobs_this_slot):
+                    row_features = [
+                        jobQ[j].get_type(),
+                        jobQ[j].get_noInstructions(),
+                        jobQ[j].get_dataBytes(),
+                        rf_cap[0], rf_cap[1], rf_cap[2],
+                        j,
+                    ]
+                    proba = rf_model.predict_proba([row_features])[0]
+                    ranked = sorted(
+                        zip(rf_model.classes_, proba),
+                        key=lambda x: x[1], reverse=True)
+
+                    placed = False
+                    for FR_ID, _ in ranked:
+                        FR_ID = int(FR_ID)
+                        if FR_ID == 0:
+                            continue
+                        elif FR_ID == 1:
+                            cs.ExecutesJob(jobQ[j], sim_time, sl_no)
+                            placed = True
+                            break
+                        else:
+                            fog_idx = FR_ID - 2
+                            if 0 <= fog_idx < len(ClusterRs):
+                                swap_time = compute_swap_time(
+                                    jobQ[j].get_noInstructions(),
+                                    jobQ[j].get_dataBytes(),
+                                    ClusterRs[fog_idx].getRAM())
+                                exec_duration = compute_exec_duration(
+                                    jobQ[j].get_noInstructions(),
+                                    ClusterRs[fog_idx].get_CPUSpeed(),
+                                    swap_time)
+                                if exec_duration <= rf_cap[fog_idx]:
+                                    ClusterRs[fog_idx].ExecutesJob(
+                                        jobQ[j], sim_time, sl_no)
+                                    rf_cap[fog_idx] = max(
+                                        0, rf_cap[fog_idx] - exec_duration)
+                                    placed = True
+                                    break
+
+                    if not placed:
+                        cs.ExecutesJob(jobQ[j], sim_time, sl_no)
+
             case 1:
                 # GA resource manager with dataset collection.
+                ga_start_time = time.perf_counter()
                 GA = GeneticAlgorithm(ClusterRs, jobQ)
                 GA.GenerateOptimalChromosome()
                 Cr = GA.returnBESTCRM()
+                ga_end_time = time.perf_counter()
+                ga_slot_times.append(ga_end_time - ga_start_time)
 
                 # ga_cap tracks remaining TIME capacity per fog node.
                 # Uses SLOT_TIME (not cpu_speed * SLOT_TIME) to match
@@ -613,6 +771,17 @@ cs.clear(sim_time)
 
 print("Simulation Completed")
 print("-----------Results--------------------")
+if len(ga_slot_times) > 0:
+    avg_ga_time = sum(ga_slot_times) / len(ga_slot_times)
+    print("")
+    print("=" * 50)
+    print("  GA INFERENCE SPEED - RESULTS")
+    print("=" * 50)
+    print(f"  Slots timed: {len(ga_slot_times)}")
+    print(f"  Avg time per slot: {avg_ga_time:.6f} seconds")
+    print(f"  Min: {min(ga_slot_times):.6f}s | Max: {max(ga_slot_times):.6f}s")
+    print("=" * 50)
+    print("")
 print("Total Simulation Time:" + str(MAX_SIMULATION_TIME))
 print("Total Number of Slots:" + str(sl_no))
 

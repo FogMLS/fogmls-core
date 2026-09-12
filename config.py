@@ -54,10 +54,24 @@ DAGGER_RM = 5  # AI executes real decisions; GA labels the SAME state
 PSO_RM = 6     # Particle Swarm Optimization scheduler (generality
                # experiment: tests whether the learnability effect
                # observed with GA is general across metaheuristics)
+RF_RM = 7      # Random Forest deployed as a live, real-time scheduler
+               # (task-level sequential inference), for the 3-way
+               # DEFAULT/GA/RF scheduling comparison
+RF_BATCH_RM = 8  # Random Forest deployed with BATCHED inference -- all
+                 # tasks in a slot predicted at once using stale,
+                 # start-of-slot capacity. Faster but methodologically
+                 # incorrect; built specifically to measure the real
+                 # cost (in scheduling quality) of this shortcut,
+                 # against RF_RM's correct-but-slower sequential version.
                # AI actually created (DAgger correction data collection)
 
+RF_SMART_RM = 9  # Random Forest with confidence-ranked fallback -- tries
+                  # RF's top choices in order of confidence, actually
+                  # checking capacity fit, instead of committing blindly
+                  # to a single top guess. Tests whether this closes the
+                  # gap with GA/DEFAULT/RR.
 # Set resource management approach
-RM_TYPE = 1
+RM_TYPE = 9
 
 # ================================================================
 # CLOUD SERVER
