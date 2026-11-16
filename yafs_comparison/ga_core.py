@@ -351,7 +351,7 @@ class Chromosome:
                     self.tbl[j][rsid] = self.tbl[j][r]
                     self.tbl[j][r] = 0
         self.Fitness()
-        if self.Fitnes > p.Fitnes:
+        if self.RawScore() > p.RawScore():
             self.copyfrom(p)
 
     def Find_FogDev(self, jId):
