@@ -13,11 +13,9 @@ import java.util.Random;
  * reimplemented from memory, to guarantee identical behavior to the
  * real FogMLS. Same strategy used successfully for the YAFS GA port.
  *
- * UPDATED: now ports FogMLS's CONFIRMED, HPC-verified GA configuration
- * (order-aware random initialization + canonical labeling), which
- * replaced an earlier plain-random-initialization version. This
- * matches the exact Python GeneticAlg.py that produced 88.11%
- * accuracy and 15.51 avg latency on FogMLS's own real simulation.
+ * UPDATED: ports the FogMLS GA configuration with order-aware random
+ * initialization and canonical labeling. The mutation step compares
+ * raw scores of child and parent (fixed 16 November 2026).
  */
 public class GACore {
 
@@ -316,7 +314,7 @@ public class GACore {
                 }
             }
             fitness();
-            if (Fitnes > p.Fitnes) copyfrom(p);
+            if (rawScore() > p.rawScore()) copyfrom(p);
         }
 
         int findFogDev(int jId) {
