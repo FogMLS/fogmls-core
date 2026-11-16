@@ -12,8 +12,7 @@ fundamentally a "collect all jobs in a slot, then solve together"
 algorithm -- forcing this through a continuous, per-tuple routing
 architecture (like was needed for Round Robin) would fight the tool
 rather than validate it. Instead this directly mirrors FogMLS's real
-per-slot loop, using the SAME GA code (patched to the confirmed,
-HPC-verified 88.11% configuration).
+per-slot loop, using the SAME GA code.
 """
 
 import random
