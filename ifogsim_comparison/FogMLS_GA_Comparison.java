@@ -14,8 +14,7 @@ import org.fog.test.perfeval.GACore.Resource;
  *
  * GA-based comparison, mirroring FogMLS's real slot-based main loop
  * structure directly (IoTsimulation.py), using the real ported GA
- * algorithm (GACore.java, patched to the confirmed HPC-verified
- * 88.11% configuration: order-aware random init + canonical
+ * algorithm (GACore.java, order-aware random init + canonical
  * labeling) and real topology specs. Same strategy used successfully
  * for the YAFS GA comparison (main_ga.py) -- does not route through
  * iFogSim's tuple/CloudSim event engine, since GA is fundamentally a
