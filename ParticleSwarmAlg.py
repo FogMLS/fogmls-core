@@ -5,10 +5,8 @@ ParticleSwarmAlg.py
 Particle Swarm Optimization scheduler for FogMLS.
 
 PURPOSE: tests whether the "learnability cost of genuine search"
-effect observed with the GA is a GENERAL property of stochastic
-metaheuristics, or merely an artifact of our specific GA
-implementation. This is the generality experiment that gates the
-venue decision for Paper A.
+effect observed with the GA is a general property of stochastic
+metaheuristics, or an artifact of the specific GA implementation.
 
 DESIGN: deliberately mirrors GeneticAlg.py's structure exactly --
 same Chromosome solution representation, same fitness functions,
@@ -23,14 +21,11 @@ implementation differences.
 TWO VARIANTS (mirroring the GA experiment exactly):
   1. PSO_DETERMINISTIC = True  -> no stochastic tie-breaking; particles
      always move toward the best-known position deterministically.
-     Analogous to the "broken"/non-searching GA (93.49% accuracy).
   2. PSO_DETERMINISTIC = False -> genuine stochastic swarm search with
-     random velocity coefficients. Analogous to the fixed,
-     genuinely-searching GA (88.11% accuracy).
+     random velocity coefficients.
 
-If the accuracy gap between these two variants is comparable to the
-GA's 93.49% vs 88.11% gap, the learnability effect is general.
-"""
+Comparing the classifier accuracy of the two variants tests whether
+the learnability effect seen with the GA also appears with PSO. """
 
 import random
 from config import (
@@ -61,7 +56,8 @@ PSO_DETERMINISTIC = False
 # ----------------------------------------------------------------
 CANONICAL_LABEL_THRESHOLD = 0.02
 
-# Order-aware random init parameters -- IDENTICAL to GeneticAlg.py.
+# Order-aware random init parameters. TOP_K matches GeneticAlg.py; 
+# the tie tolerance here is 0.10 (GeneticAlg.py uses 0.05).
 TOP_K_RANDOM_CANDIDATES = 2
 TIE_RELATIVE_TOLERANCE = 0.10
 
