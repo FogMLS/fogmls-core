@@ -8,11 +8,9 @@ objects instead of FogMLS's devices.py classes, so it can run inside
 YAFS unmodified in logic. Formulas copied EXACTLY, not reimplemented
 from memory, to guarantee identical behavior to the real FogMLS.
 
-UPDATED: now ports FogMLS's CONFIRMED, HPC-verified GA configuration
-(order-aware random initialization + canonical labeling), which
-replaced an earlier plain-random-initialization version. This matches
-the exact Python GeneticAlg.py that produced 88.11% accuracy and
-15.51 avg latency on FogMLS's own real simulation.
+UPDATED: ports the FogMLS GA configuration with order-aware random
+initialization and canonical labeling. The mutation step compares raw
+scores of child and parent (fixed 16 November 2026).
 """
 
 import random
@@ -264,11 +262,9 @@ class Chromosome:
 
     def order_aware_random_init(self):
         """
-        Order-aware random initialization, with deterministic
-        tie-break. Direct port of FogMLS's confirmed GeneticAlg.py
-        order_aware_random_init() -- the exact configuration that
-        produced 88.11% accuracy (HPC-verified) and matches GA's real
-        15.51 avg-latency simulation numbers exactly.
+                Order-aware random initialization, with deterministic
+        tie-break. Direct port of FogMLS's GeneticAlg.py
+        order_aware_random_init().
 
         Processes jobs in QUEUE ORDER (same as greedy_init) and tracks
         remaining capacity as it goes. For each job, scores all fog
