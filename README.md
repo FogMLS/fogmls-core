@@ -23,10 +23,12 @@ peer-reviewed fog computing simulators — YAFS and iFogSim — across two
 scheduling strategies (GA-based and Round Robin), with closely matching
 results:
 
+
 | Scheduler | FogMLS | YAFS | iFogSim |
 |---|---|---|---|
-| GA (avg latency) | 15.51 | 13.90 | 13.90 |
+| GA (avg latency) | 15.52 | 13.90 | 13.90 |
 | Round Robin (avg latency) | 18.49 | 15.43 | 17.28 |
+
 
 ## Repository contents
 
@@ -43,7 +45,6 @@ results:
 | `ten_trials_comparison.py` | Rigorous 10-independent-trial statistical comparison of all five schedulers (DEFAULT, GA, RR, RF, RF_SMART), with paired t-tests |
 | `scalability_test.py` | Sensor-density scaling experiment (9/27/45/63 sensors per cluster) |
 | `scalability_test_nodes.py` | Fog node-count scaling experiment (1-6 nodes), following LEAF's precedent |
-| `DL_pipeline.py`, `model_arch.py` | Deep learning training pipeline (full analysis in a forthcoming companion paper) |
 | `yafs_comparison/` | Cross-validation against YAFS, an independent peer-reviewed fog simulator |
 | `ifogsim_comparison/` | Cross-validation against iFogSim, the foundational fog simulator |
 
@@ -87,12 +88,6 @@ above):
 python3 ten_trials_comparison.py
 ```
 
-To train a deep learning classifier on the generated dataset (companion work,
-not yet finalized):
-```bash
-python3 DL_pipeline.py dataset-<timestamp>.txt
-```
-
 ## Configuration
 
 Edit `config.py` to change the resource management strategy:
@@ -103,46 +98,43 @@ RM_TYPE = RR_RM         # Round Robin baseline
 RM_TYPE = RF_SMART_RM   # Random Forest, confidence-ranked deployment (best result)
 ```
 
+
 ## Confirmed results
 
-Across 10 independent trials, each using a distinct random seed:
+GA mutation step fixed on 16 November 2026 (child and parent now compared on raw score). All results below use the fixed version.
 
-- **RF_SMART_RM achieves the best result of all schedulers evaluated:**
-  14.55 average task latency and 19.91% cloud offload, a statistically
-  significant improvement over GA itself (paired t-test, t(9) = -259.91,
-  p < 0.001). This is a Random Forest classifier trained on GA-derived
-  labels, deployed using its full confidence-ranked prediction list rather
-  than a single top guess — see `ten_trials_comparison.py`.
-- **GA_RM** achieves 15.50 average latency, a 6.0% reduction over
-  `DEFAULT_RM` (16.48), confirmed statistically significant (t(9) = 302.94,
-  p < 0.001).
-- **Cross-simulator validation:** results closely match two independent,
-  peer-reviewed fog simulators (YAFS, iFogSim) — see `yafs_comparison/` and
-  `ifogsim_comparison/` for full details and reproduction instructions.
-- **Classical ML learnability:** a Random Forest baseline trained on
-  task-level features achieves 76.4% offline accuracy, with Cloud
-  assignments predicted near-perfectly (F1=1.00) and fog-node assignments
-  ranging from 0.61 to 0.75 F1 — the comparatively lower performance on
-  Fog-3 reflects the limits of task-level features without sequential slot
-  context, motivating the sequence-aware deep learning approach explored in
-  a forthcoming companion paper.
+Averages over independent random seeds (the number of seeds is stated per result):
+
+- **RF_SMART_RM** (Random Forest classifier trained on GA-derived labels,
+  deployed with its confidence-ranked prediction list) reaches 14.81
+  average task latency over 9 seeds, against 15.52 for GA over 10 seeds
+  and 16.48 for DEFAULT_RM. Top-1 Random Forest deployment reaches 18.34.
+  See `ten_trials_comparison.py`.
+- **GA_RM** reaches 15.52 average latency against 16.48 for `DEFAULT_RM`.
+  Round Robin reaches 18.49.
+- **Cross-simulator validation:** results are compared against two
+  independent, peer-reviewed fog simulators (YAFS, iFogSim). See
+  `yafs_comparison/` and `ifogsim_comparison/` for details and
+  reproduction instructions.
+- **Classical ML learnability:** the Random Forest baseline reaches 73.9%
+  offline accuracy (macro F1 0.75). F1 is 0.98 for Cloud and 0.73, 0.70
+  and 0.59 for Fog-1, Fog-2 and Fog-3.
 - **Case study reproduction:** independently confirms both the direction and
   scaling trend reported in iFogSim's own published Intelligent Surveillance
   case study (Gupta et al., 2017) — see
   `intelligent_surveillance_case_study.py`.
-- **PSO generality test:** the same order-aware initialization, canonical
-  labeling, and tie-tolerance recipe developed for GA transfers directly to
-  an independently-built PSO scheduler, using the identical tuned parameter
-  (5% tie-tolerance is optimal for both). PSO achieves better raw scheduling
-  performance than GA (12.25 vs. 15.51 avg latency) but lower downstream ML
-  learnability — a tested, evidence-based tradeoff informing our choice of
-  GA as the label-generating algorithm — see `ParticleSwarmAlg.py`.
+- **PSO generality test:** the same order-aware initialization and
+  canonical labeling recipe was applied to an independently built PSO
+  scheduler (tie tolerance 0.10 for PSO, 0.05 for GA). PSO reaches 12.26
+  average latency against 15.52 for GA. See `ParticleSwarmAlg.py`.
 
 ## Related dataset
 
 A large-scale (269,946 task-resource assignments, 5,000 slots) dataset
 generated with FogMLS is publicly available on Zenodo:
 [DOI: 10.5281/zenodo.19506449](https://doi.org/10.5281/zenodo.19506449)
+
+
 
 ## Citation
 
